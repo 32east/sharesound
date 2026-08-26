@@ -4,6 +4,9 @@
 static const char* kUserScript = R"USERSCRIPT(// ==UserScript==
 // @name         Screen Share Sound (Firefox)
 // @namespace    sharesound
+// @homepageURL  https://github.com/32east/sharesound
+// @downloadURL  https://raw.githubusercontent.com/32east/sharesound/master/assets/sharesound.user.js
+// @updateURL    https://raw.githubusercontent.com/32east/sharesound/master/assets/sharesound.user.js
 // @version      1.1.1
 // @description  Adds system audio to screen sharing in Firefox, which cannot capture it itself
 // @match        https://discord.com/*
