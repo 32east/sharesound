@@ -4,12 +4,10 @@
 static const char* kUserScript = R"USERSCRIPT(// ==UserScript==
 // @name         Screen Share Sound (Firefox)
 // @namespace    sharesound
-// @version      1.1.0
+// @version      1.1.1
 // @description  Adds system audio to screen sharing in Firefox, which cannot capture it itself
 // @match        https://discord.com/*
 // @match        https://*.discord.com/*
-// @match        http://127.0.0.1/*
-// @match        http://localhost/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -19,18 +17,6 @@ static const char* kUserScript = R"USERSCRIPT(// ==UserScript==
 
   var BRIDGE = 'http://127.0.0.1:47823';
   var CONNECT_TIMEOUT_MS = 2500;
-  var VERSION = '1.1.0';
-
-  // On the helper's own status page there is nothing to patch: just leave a mark
-  // so the page can tell the user this script is installed.
-  if (location.origin === BRIDGE) {
-    var mark = function () {
-      try { document.documentElement.dataset.sharesound = VERSION; } catch (e) {}
-    };
-    mark();
-    document.addEventListener('DOMContentLoaded', mark);
-    return;
-  }
   var log = function (m, x) { try { console.log('[sharesound] ' + m, x === undefined ? '' : x); } catch (e) {} };
 
   // The worklet keeps a small jitter buffer: it waits for PREFILL before
@@ -198,7 +184,8 @@ static const char* kStatusPage = R"STATUSPAGE(<!doctype html>
   .meter div { height: 100%; width: 0; background: #3ba55d; transition: width .1s; }
   a.btn { display: inline-block; background: #5865f2; color: #fff; text-decoration: none;
           padding: 12px 20px; border-radius: 6px; margin: 18px 0 6px; font-weight: 600; }
-  a.btn.done { background: #2b2e34; color: #9aa0a6; }
+  a.btn.secondary { background: #2b2e34; color: #e6e7ea; }
+  .dl { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   ol { padding-left: 22px; } li { margin: 6px 0; }
   .hint { background: #1e2024; border-left: 3px solid #faa81a; padding: 12px 16px;
           border-radius: 0 6px 6px 0; margin: 16px 0; }
@@ -215,14 +202,14 @@ static const char* kStatusPage = R"STATUSPAGE(<!doctype html>
 <div class="card"><span class="dot wait" id="d1"></span><div>
   <b id="t1"></b><small id="s1"></small></div></div>
 
-<div class="card"><span class="dot wait" id="d2"></span><div>
-  <b id="t2"></b><small id="s2"></small></div></div>
-
 <div class="card"><span class="dot wait" id="d3"></span><div style="flex:1">
   <b id="t3"></b><small id="s3"></small>
   <div class="meter"><div id="bar"></div></div></div></div>
 
-<a class="btn" id="install" href="/sharesound.user.js"></a>
+<p class="dl">
+  <a class="btn" href="https://addons.mozilla.org/firefox/addon/tampermonkey/" target="_blank" id="b_tm"></a>
+  <a class="btn" href="/sharesound.user.js" id="b_us"></a>
+</p>
 
 <h3 id="h_steps"></h3>
 <ol id="steps"></ol>
@@ -236,14 +223,13 @@ const T = {
   en: {
     tagline: 'System audio for screen sharing in Firefox.',
     t1: 'Helper', s1w: 'checking…', s1ok: 'running', s1bad: 'not responding — start sharesound.exe',
-    t2: 'Userscript', s2w: 'checking…', s2ok: 'installed', s2bad: 'not detected — install it below, then reload this page (F5)',
     t3: 'Sound being captured', s3w: 'listening…', s3ok: 'sound is coming through',
     s3quiet: 'silence — play some music to test', s3bad: 'cannot read the audio stream',
-    install: 'Install the userscript', installed: 'Userscript already installed',
+    b_tm: '1 · Install Tampermonkey', b_us: '2 · Install the script',
     h_steps: 'Setup',
     steps: [
-      'Install <a href="https://addons.mozilla.org/firefox/addon/tampermonkey/">Tampermonkey</a> in Firefox.',
-      'Click the blue button above, then <b>Install</b> in the tab that opens — and reload this page afterwards, so the check above turns green.',
+      'Install Tampermonkey (button 1) — it is the add-on that runs the script.',
+      'Click button 2, then <b>Install</b> in the tab Tampermonkey opens.',
       'Reload your Discord tab (Ctrl+R).',
       'Start a screen share — the sound now goes with it.'
     ],
@@ -256,14 +242,13 @@ const T = {
   ru: {
     tagline: 'Звук при демонстрации экрана в Firefox.',
     t1: 'Программа', s1w: 'проверяю…', s1ok: 'работает', s1bad: 'не отвечает — запустите sharesound.exe',
-    t2: 'Скрипт для браузера', s2w: 'проверяю…', s2ok: 'установлен', s2bad: 'не найден — установите его ниже, затем обновите эту страницу (F5)',
     t3: 'Звук захватывается', s3w: 'слушаю…', s3ok: 'звук идёт',
     s3quiet: 'тишина — включите музыку для проверки', s3bad: 'не удаётся прочитать звук',
-    install: 'Установить скрипт', installed: 'Скрипт уже установлен',
+    b_tm: '1 · Поставить Tampermonkey', b_us: '2 · Установить скрипт',
     h_steps: 'Установка',
     steps: [
-      'Поставьте <a href="https://addons.mozilla.org/firefox/addon/tampermonkey/">Tampermonkey</a> в Firefox.',
-      'Нажмите синюю кнопку выше, затем <b>Install</b> во вкладке, которая откроется — и обновите эту страницу, чтобы проверка выше стала зелёной.',
+      'Поставьте Tampermonkey (кнопка 1) — это расширение, которое запускает скрипт.',
+      'Нажмите кнопку 2, затем <b>Install</b> во вкладке, которую откроет Tampermonkey.',
       'Перезагрузите вкладку Discord (Ctrl+R).',
       'Запускайте демонстрацию экрана — звук теперь идёт вместе с ней.'
     ],
@@ -298,7 +283,10 @@ function render() {
   const t = T[lang];
   document.getElementById('lang').textContent = lang === 'ru' ? 'English' : 'Русский';
   document.getElementById('tagline').textContent = t.tagline;
-  for (const k of ['t1', 't2', 't3', 'h_steps', 'h_echo']) document.getElementById(k).textContent = t[k];
+  for (const k of ['t1', 't3', 'h_steps', 'h_echo']) document.getElementById(k).textContent = t[k];
+  document.getElementById('b_tm').textContent = t.b_tm;
+  document.getElementById('b_us').textContent = t.b_us;
+  document.getElementById('b_tm').className = 'btn secondary';
   document.getElementById('steps').innerHTML = t.steps.map(x => '<li>' + x + '</li>').join('');
   document.getElementById('foot').textContent = t.foot;
   refresh();
@@ -316,18 +304,11 @@ function set(n, state, text) {
 
 function refresh() {
   const t = T[lang];
-  set(1, 'wait', t.s1w); set(2, 'wait', t.s2w); set(3, 'wait', t.s3w);
+  set(1, 'wait', t.s1w); set(3, 'wait', t.s3w);
 
   fetch('/health').then(r => r.json())
     .then(h => set(1, 'ok', t.s1ok + ' · ' + h.mode))
     .catch(() => set(1, 'bad', t.s1bad));
-
-  // the userscript tags this page when it is installed
-  const installed = !!document.documentElement.dataset.sharesound;
-  set(2, installed ? 'ok' : 'bad', installed ? t.s2ok : t.s2bad);
-  const btn = document.getElementById('install');
-  btn.textContent = installed ? t.installed : t.install;
-  btn.className = installed ? 'btn done' : 'btn';
 
   fetch('/doctor').then(r => r.json()).then(d => {
     const e = document.getElementById('echo');
@@ -360,17 +341,6 @@ async function meter() {
     set(3, 'bad', T[lang].s3bad);
   }
 }
-
-document.getElementById('install').addEventListener('click', () => {
-  // Tampermonkey only applies a script to fresh page loads, so the check above
-  // stays red until this page is reloaded - say so instead of looking broken.
-  setTimeout(() => {
-    const t = T[lang];
-    set(2, 'wait', lang === 'ru'
-      ? 'после установки обновите эту страницу (F5)'
-      : 'after installing, reload this page (F5)');
-  }, 1500);
-});
 
 render();
 meter();
