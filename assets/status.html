@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>sharesound</title>
+<style>
+  body { font: 15px/1.6 system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px;
+         background: #16171a; color: #e6e7ea; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #9aa0a6; margin-top: 0; }
+  code { background: #24262b; padding: 2px 6px; border-radius: 4px; }
+  a.btn { display: inline-block; background: #5865f2; color: #fff; text-decoration: none;
+          padding: 10px 16px; border-radius: 6px; margin: 12px 0; }
+  #st { padding: 12px; border-radius: 6px; background: #24262b; margin: 16px 0; }
+  ol { padding-left: 20px; }
+</style>
+<h1>sharesound</h1>
+<p class="sub">System audio for screen sharing in Firefox.</p>
+<div id="st">checking helper…</div>
+<a class="btn" href="/sharesound.user.js">Install the userscript</a>
+<ol>
+  <li>Install <b>Tampermonkey</b> in Firefox, then click the button above.</li>
+  <li>Reload the Discord tab, then start a screen share.</li>
+  <li>To stop remote participants hearing themselves, set Discord's
+      <i>Output Device</i> to your real headphones instead of <i>Default</i>.</li>
+</ol>
+<script>
+  fetch('/health').then(r => r.json()).then(h => {
+    document.getElementById('st').textContent =
+      'helper running · capture: ' + h.mode + ' · listeners: ' + h.clients;
+  }).catch(() => {
+    document.getElementById('st').textContent = 'helper is not responding';
+  });
+</script>
