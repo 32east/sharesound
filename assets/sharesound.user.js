@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         Screen Share Sound (Firefox)
 // @namespace    sharesound
-// @version      1.0.0
+// @version      1.1.0
 // @description  Adds system audio to screen sharing in Firefox, which cannot capture it itself
 // @match        https://discord.com/*
 // @match        https://*.discord.com/*
+// @match        http://127.0.0.1/*
+// @match        http://localhost/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -14,6 +16,18 @@
 
   var BRIDGE = 'http://127.0.0.1:47823';
   var CONNECT_TIMEOUT_MS = 2500;
+  var VERSION = '1.1.0';
+
+  // On the helper's own status page there is nothing to patch: just leave a mark
+  // so the page can tell the user this script is installed.
+  if (location.origin === BRIDGE) {
+    var mark = function () {
+      try { document.documentElement.dataset.sharesound = VERSION; } catch (e) {}
+    };
+    mark();
+    document.addEventListener('DOMContentLoaded', mark);
+    return;
+  }
   var log = function (m, x) { try { console.log('[sharesound] ' + m, x === undefined ? '' : x); } catch (e) {} };
 
   // The worklet keeps a small jitter buffer: it waits for PREFILL before

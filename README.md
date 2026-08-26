@@ -72,20 +72,26 @@ audio track.
 
 ## Install
 
-1. Install [Tampermonkey](https://addons.mozilla.org/firefox/addon/tampermonkey/) in Firefox.
-2. Download a release (or build it — see below), then run:
+No administrator rights needed, and nothing about your audio setup is changed.
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File install.ps1
-   ```
+1. Install [Tampermonkey](https://addons.mozilla.org/firefox/addon/tampermonkey/) in Firefox — it is the
+   add-on that runs the small script this needs.
+2. Download the latest release archive and **unpack it whole** (don't run it from inside the zip).
+3. Double-click **`Install.bat`**.
+4. A page opens in your browser. Click the blue **Install the userscript** button, then **Install** in
+   the tab that appears.
+5. Reload your Discord tab (Ctrl+R) and start a screen share. The sound goes with it.
 
-   This copies the helper to `%LOCALAPPDATA%\sharesound`, starts it, registers it to run at logon, and
-   opens `http://127.0.0.1:47823/`.
-3. On that page, click **Install the userscript**.
-4. Reload the Discord tab and start a screen share.
+The page at `http://127.0.0.1:47823/` is also your check-up: it shows whether the helper is running,
+whether the script is installed, a live level bar proving sound is being captured, and what — if
+anything — you should change so callers do not hear themselves. It speaks English and Russian.
 
-To remove: `powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall` (the userscript is deleted
-separately, in Tampermonkey).
+**Windows will warn you about the download.** The binaries are not code-signed (signing certificates
+cost money), so SmartScreen shows *"Windows protected your PC"*. Click **More info → Run anyway**. If you
+would rather not trust a binary from a stranger, build it yourself — see below, it's two commands.
+
+To remove: double-click **`Uninstall.bat`**. That stops the helper, removes it from autostart and deletes
+its files; the browser script is removed separately, inside Tampermonkey.
 
 ## Important: will callers hear themselves?
 
@@ -141,8 +147,9 @@ The mode can also be switched while running:
 sharesound-cli --doctor    # what this machine can do about echo
 sharesound-cli --list      # output devices and which processes are playing
 sharesound-cli --tone NAME # 5-second test tone into one device
-curl http://127.0.0.1:47823/health
 ```
+
+Over HTTP: `/health` (state), `/doctor` (the same verdict as JSON), `/pcm` (the audio stream itself).
 
 ## Build
 
@@ -165,6 +172,9 @@ Two binaries from one source: the GUI one runs windowless at logon, the console 
   by roughly as much anyway.
 - The audio track is attached when a share *starts*. If you start a share before the helper is running,
   restart the share.
+- Capture follows the default output device and reopens itself when that changes — a wireless headset
+  going to sleep, a USB device unplugged — and retries if a device fails to open, so a stream does not
+  go permanently silent.
 - The bridge is plain HTTP on `127.0.0.1` and serves raw system audio to anything on the loopback
   interface that asks. It refuses nothing; treat it as you would any local audio device.
 - Firefox-specific by nature. In Chrome and Edge, tick "share tab audio" instead — this isn't needed.

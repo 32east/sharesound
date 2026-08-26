@@ -458,7 +458,7 @@ static void listDevicesAndSessions() {
 static void ensureCapture();
 
 // ------------------------------------------------------------- capture thread
-static void captureThread() {
+static void captureOnce() {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     bool comInit = SUCCEEDED(hr);
 
@@ -493,7 +493,6 @@ static void captureThread() {
             g_lastError = hr;
             logf("device loopback failed hr=0x%08X", hr);
             if (comInit) CoUninitialize();
-            g_captureRunning = false;
             return;
         }
         g_activeMode = "all @ " + narrow(used);
@@ -511,7 +510,6 @@ static void captureThread() {
         logf("Initialize failed hr=0x%08X", hr);
         client->Release();
         if (comInit) CoUninitialize();
-        g_captureRunning = false;
         return;
     }
 
@@ -525,7 +523,6 @@ static void captureThread() {
         client->Release();
         CloseHandle(evt);
         if (comInit) CoUninitialize();
-        g_captureRunning = false;
         return;
     }
     client->Start();
@@ -581,9 +578,21 @@ static void captureThread() {
     CloseHandle(evt);
     if (comInit) CoUninitialize();
     g_activeMode = "idle";
-    g_captureRunning = false;
     logf("capture stopped");
-    if (g_restartRequested.exchange(false) && haveClients()) ensureCapture();
+}
+
+// Keeps capture alive for as long as somebody is listening. A deliberate
+// restart (mode switch, default device changed) reopens at once; a failure
+// waits a second first so a missing device cannot spin the CPU.
+static void captureThread() {
+    captureOnce();
+    g_activeMode = "idle";
+    g_captureRunning = false;
+    bool deliberate = g_restartRequested.exchange(false);
+    if (haveClients()) {
+        if (!deliberate) Sleep(1000);
+        if (haveClients()) ensureCapture();
+    }
 }
 
 static void ensureCapture() {
@@ -591,6 +600,54 @@ static void ensureCapture() {
     if (g_captureRunning.compare_exchange_strong(expected, true)) {
         std::thread(captureThread).detach();
     }
+}
+
+// Windows moves audio to another endpoint when a wireless headset sleeps, a USB
+// device is unplugged, or the user picks a different output. Capture is bound to
+// one endpoint, so it has to be reopened when that happens.
+class DeviceWatcher : public IMMNotificationClient {
+public:
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IMMNotificationClient)) {
+            *ppv = static_cast<IMMNotificationClient*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+    STDMETHODIMP_(ULONG) AddRef() override { return InterlockedIncrement(&ref_); }
+    STDMETHODIMP_(ULONG) Release() override {
+        LONG r = InterlockedDecrement(&ref_);
+        if (r == 0) delete this;
+        return r;
+    }
+    STDMETHODIMP OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR) override {
+        if (flow == eRender && role == eConsole && g_captureRunning) {
+            logf("default output changed, reopening capture");
+            g_restartRequested = true;
+            g_captureRunning = false;
+        }
+        return S_OK;
+    }
+    STDMETHODIMP OnDeviceStateChanged(LPCWSTR, DWORD) override { return S_OK; }
+    STDMETHODIMP OnDeviceAdded(LPCWSTR) override { return S_OK; }
+    STDMETHODIMP OnDeviceRemoved(LPCWSTR) override { return S_OK; }
+    STDMETHODIMP OnPropertyValueChanged(LPCWSTR, const PROPERTYKEY) override { return S_OK; }
+
+private:
+    LONG ref_ = 1;
+};
+
+static IMMDeviceEnumerator* g_watchEnum = nullptr;
+static DeviceWatcher* g_watcher = nullptr;
+
+static void watchDeviceChanges() {
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                __uuidof(IMMDeviceEnumerator),
+                                reinterpret_cast<void**>(&g_watchEnum)))) return;
+    g_watcher = new DeviceWatcher();
+    g_watchEnum->RegisterEndpointNotificationCallback(g_watcher);
 }
 
 
@@ -608,6 +665,61 @@ static DWORD windowsBuild() {
     vi.dwOSVersionInfoSize = sizeof(vi);
     if (f(&vi) != 0) return 0;
     return vi.dwBuildNumber;
+}
+
+struct Diagnosis {
+    DWORD build = 0;
+    std::string defaultDevice;
+    int activeOutputs = 0;
+    bool perApp = false;
+    HRESULT perAppHr = S_OK;
+    const char* verdict = "unknown";   // perapp | separate-device | stuck
+};
+
+static Diagnosis diagnose() {
+    Diagnosis d;
+    d.build = windowsBuild();
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    IMMDeviceEnumerator* en2 = nullptr;
+    if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                   __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&en2)))) {
+        IMMDevice* def = nullptr;
+        if (SUCCEEDED(en2->GetDefaultAudioEndpoint(eRender, eConsole, &def))) {
+            d.defaultDevice = narrow(deviceFriendlyName(def));
+            def->Release();
+        }
+        IMMDeviceCollection* col = nullptr;
+        if (SUCCEEDED(en2->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &col))) {
+            UINT c = 0;
+            col->GetCount(&c);
+            d.activeOutputs = (int)c;
+            col->Release();
+        }
+        en2->Release();
+    }
+    IAudioClient* probe = nullptr;
+    d.perAppHr = openProcessLoopback(GetCurrentProcessId(), true, &probe);
+    d.perApp = SUCCEEDED(d.perAppHr);
+    if (probe) probe->Release();
+    CoUninitialize();
+    d.verdict = d.perApp ? "perapp" : (d.activeOutputs > 1 ? "separate-device" : "stuck");
+    return d;
+}
+
+static std::string doctorJson() {
+    Diagnosis d = diagnose();
+    std::string dev;
+    for (char c : d.defaultDevice) {   // JSON-escape the device name
+        if (c == '"' || c == '\\') dev += '\\';
+        dev += c;
+    }
+    char buf[768];
+    snprintf(buf, sizeof(buf),
+             "{\"build\":%lu,\"defaultDevice\":\"%s\",\"activeOutputs\":%d,"
+             "\"perApp\":%s,\"perAppHr\":\"0x%08X\",\"verdict\":\"%s\"}",
+             d.build, dev.c_str(), d.activeOutputs, d.perApp ? "true" : "false",
+             (unsigned)d.perAppHr, d.verdict);
+    return buf;
 }
 
 static int doctor() {
@@ -808,6 +920,8 @@ static void handleClient(SOCKET s) {
         g_restartRequested = true;
         g_captureRunning = false;  // restart capture with the new mode
         sendSimple(s, "200 OK", "application/json", "{\"ok\":true}");
+    } else if (path == "/doctor") {
+        sendSimple(s, "200 OK", "application/json", doctorJson());
     } else if (path == "/sharesound.user.js") {
         sendSimple(s, "200 OK", "text/javascript; charset=utf-8", kUserScript);
     } else if (path == "/" || path == "/index.html") {
@@ -859,6 +973,8 @@ int wmain(int argc, wchar_t** argv) {
         return 1;
     }
     listen(srv, 8);
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    watchDeviceChanges();
     printf("sharesound listening on http://127.0.0.1:%d  (capture: %s%s%s)\n", g_cfg.port,
            g_cfg.mode == Mode::All ? "system mix" : (g_cfg.mode == Mode::Exclude ? "exclude " : "only "),
            g_cfg.mode == Mode::All ? "" : narrow(g_cfg.target).c_str(),
